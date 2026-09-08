@@ -1,0 +1,235 @@
+<div class="chat-wrapper" [class.mobile-chat-open]="!!selectedUser">
+  <!-- Left Sidebar: Users & Contacts -->
+  <aside class="chat-sidebar">
+    <!-- User Profile Header -->
+    <div class="sidebar-header">
+      <div class="current-user-info">
+        <div class="user-avatar-badge current-avatar">
+          {{ getUserInitials(currentUser?.username || '') }}
+          <span class="status-indicator" [class.online]="isWsConnected" [title]="isWsConnected ? 'Real-time connected' : 'Connecting...'"></span>
+        </div>
+        <div class="user-details">
+          <span class="username-title">{{ currentUser?.username }}</span>
+          <span class="status-text">{{ isWsConnected ? 'Connected (Live)' : 'Connecting...' }}</span>
+        </div>
+      </div>
+      <button class="logout-btn" (click)="logout()" title="Logout">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Contact Search Input -->
+    <div class="search-box">
+      <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input
+        type="text"
+        [(ngModel)]="searchQuery"
+        (input)="filterUsers()"
+        placeholder="Search chats..."
+        class="search-input"
+      />
+      <button *ngIf="searchQuery" class="clear-search-btn" (click)="searchQuery = ''; filterUsers()">×</button>
+    </div>
+
+    <!-- Users List Header -->
+    <div class="section-heading">
+      <span>{{ searchQuery.trim() ? 'SEARCH RESULTS' : 'RECENT CHATS' }}</span>
+      <span class="users-count-badge">{{ filteredUsers.length }}</span>
+    </div>
+
+    <!-- Users List -->
+    <div class="users-list">
+      <div *ngIf="isLoadingUsers" class="loading-state">
+        <div class="spinner"></div>
+        <span>Loading contacts...</span>
+      </div>
+
+      <div *ngIf="!isLoadingUsers && filteredUsers.length === 0" class="empty-users-state">
+        <div *ngIf="!searchQuery.trim()">
+          <p><strong>No recent chats</strong></p>
+          <small>Use the search bar above to find a person by name and start a chat!</small>
+        </div>
+        <div *ngIf="searchQuery.trim()">
+          <p>No contacts found matching "{{ searchQuery }}"</p>
+        </div>
+      </div>
+
+      <div
+        *ngFor="let user of filteredUsers"
+        class="user-item"
+        [class.active]="selectedUser?.id === user.id"
+        (click)="onSelectUser(user)"
+      >
+        <div class="user-avatar-badge">
+          {{ getUserInitials(user.username) }}
+        </div>
+        <div class="user-item-info">
+          <div class="user-item-top">
+            <div class="user-item-name">{{ user.username }}</div>
+            <div class="user-item-time" *ngIf="user.last_message_at">{{ formatSidebarTime(user.last_message_at) }}</div>
+          </div>
+          <div class="user-item-sub">{{ lastMessagePreviews[user.id] || (user.last_message_at ? 'Encrypted message' : 'Click to start conversation') }}</div>
+        </div>
+        <div *ngIf="selectedUser?.id === user.id" class="active-arrow">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right: Chat Conversation Area -->
+  <main class="chat-main">
+    <!-- Active Chat Header -->
+    <ng-container *ngIf="selectedUser; else noChatSelected">
+      <div class="chat-header">
+        <button class="mobile-back-btn" (click)="selectedUser = null" title="Back to chats">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+        </button>
+        <div class="chat-header-user">
+          <div class="user-avatar-badge header-avatar">
+            {{ getUserInitials(selectedUser.username) }}
+          </div>
+          <div class="chat-header-info">
+            <h2 class="chat-header-title">{{ selectedUser.username }}</h2>
+            <div class="chat-header-status">
+              <span class="live-dot"></span>
+              <span *ngIf="e2eReady">End-to-end encrypted</span>
+              <span *ngIf="!e2eReady">Waiting for {{ selectedUser.username }} to open ChatConnect</span>
+            </div>
+          </div>
+        </div>
+        <div class="e2e-badge" [class.ready]="e2eReady" [title]="e2eReady ? 'Messages are encrypted on this device' : 'Encryption starts after both users sign in'">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          E2E
+        </div>
+      </div>
+
+      <!-- Messages Thread -->
+      <div class="messages-container" #messagesContainer>
+        <div *ngIf="isLoadingMessages" class="loading-messages">
+          <div class="spinner"></div>
+          <span>Loading messages...</span>
+        </div>
+
+        <div *ngIf="!isLoadingMessages && messages.length === 0" class="empty-thread">
+          <div class="empty-thread-icon">💬</div>
+          <h3>Start of conversation</h3>
+          <p>Send a message, photo, video, or file to <strong>{{ selectedUser.username }}</strong>.</p>
+        </div>
+
+        <div *ngFor="let msg of messages" class="message-row" [class.outgoing]="isMyMessage(msg)" [class.incoming]="!isMyMessage(msg)">
+          <div *ngIf="!isMyMessage(msg)" class="message-avatar">
+            {{ getUserInitials(selectedUser.username) }}
+          </div>
+          <div class="message-bubble-wrapper">
+            <div class="message-bubble" [class.media-bubble]="msg.message_type === 'image' || msg.message_type === 'video'">
+              <img
+                *ngIf="msg.message_type === 'image' && msg.attachmentObjectUrl"
+                [src]="msg.attachmentObjectUrl"
+                [alt]="msg.file_name || 'Photo'"
+                class="message-image"
+              />
+              <video
+                *ngIf="msg.message_type === 'video' && msg.attachmentObjectUrl"
+                [src]="msg.attachmentObjectUrl"
+                class="message-video"
+                controls
+              ></video>
+              <a
+                *ngIf="msg.message_type === 'file' && msg.attachmentObjectUrl"
+                class="file-card"
+                [href]="msg.attachmentObjectUrl"
+                [download]="msg.file_name || 'download'"
+                target="_blank"
+                rel="noopener"
+              >
+                <span class="file-icon">📎</span>
+                <span class="file-meta">
+                  <span class="file-name">{{ msg.file_name || 'Attachment' }}</span>
+                  <span class="file-size">{{ formatFileSize(msg.file_size) }}</span>
+                </span>
+              </a>
+              <p class="message-text" *ngIf="displayText(msg)">{{ displayText(msg) }}</p>
+              <span class="message-time">
+                <span *ngIf="msg.is_encrypted" class="lock-mini" title="Encrypted">🔒</span>
+                {{ formatTime(msg.created_at) }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div *ngIf="errorMessage" class="chat-error">{{ errorMessage }}</div>
+
+      <!-- Message Input Bar -->
+      <div class="chat-input-bar">
+        <input
+          #fileInput
+          type="file"
+          class="hidden-file-input"
+          accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.mp3,.wav"
+          (change)="onFileSelected($event)"
+        />
+        <button class="attach-btn" type="button" (click)="onAttachClick()" [disabled]="isSending" title="Share photo, video, or file">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+          </svg>
+        </button>
+        <textarea
+          [(ngModel)]="newMessageContent"
+          (keydown)="onKeyDown($event)"
+          placeholder="Type a message... (Enter to send)"
+          rows="1"
+          class="chat-textarea"
+        ></textarea>
+        <button
+          class="send-btn"
+          [disabled]="!newMessageContent.trim() || isSending"
+          (click)="sendMessage()"
+          title="Send message"
+        >
+          <svg *ngIf="!isSending" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+          <div *ngIf="isSending" class="spinner-small"></div>
+        </button>
+      </div>
+    </ng-container>
+
+    <!-- Empty State (No Chat Selected) -->
+    <ng-template #noChatSelected>
+      <div class="no-selection-container">
+        <div class="welcome-card">
+          <div class="welcome-icon-box">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </div>
+          <h2>Welcome to ChatConnect, {{ currentUser?.username }}!</h2>
+          <p>Choose a contact on the left. Recent conversations stay at the top. Messages, photos, and files are end-to-end encrypted on this device.</p>
+          <div class="feature-pills">
+            <span class="pill">⚡ Real-time WebSockets</span>
+            <span class="pill">🔒 End-to-End Encryption</span>
+            <span class="pill">📎 Photos, videos & files</span>
+          </div>
+        </div>
+      </div>
+    </ng-template>
+  </main>
+</div>
